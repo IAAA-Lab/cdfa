@@ -728,12 +728,6 @@ cdfa:location-alagón a dct:Location ;
 cdfa:location-alcañiz a dct:Location ;
     dct:title "Alcañiz"@es .
 
-cdfa:location-calatayud a dct:Location ;
-    dct:title "Calatayud"@es .
-
-cdfa:location-calatayut a dct:Location ;
-    dct:title "Calatayut"@es .
-
 cdfa:location-daroca a dct:Location ;
     dct:title "Daroca"@es .
 
@@ -12597,7 +12591,7 @@ cdfa:courtevent-523 a cdfa:CourtEvent ;
         cdfa:phrase-court-523-1850,
         cdfa:phrase-court-523-1851,
         cdfa:phrase-court-523-1852 ;
-    dct:spatial cdfa:location-calatayut ;
+    dct:spatial cdfa:location-calatayud ;
     dct:title "Pedro Cuarto. Calatayud, 1366"@es ;
     cdfa:chairedBy cdfa:person-pedro_cuarto .
 
@@ -12607,6 +12601,9 @@ cdfa:courtevent-552 a cdfa:CourtEvent ;
     dct:spatial cdfa:location-zaragoza ;
     dct:title "Pedro Tercero. En Zaragoza, 1283."@es ;
     cdfa:chairedBy cdfa:person-pedro_tercero .
+
+cdfa:location-calatayud a dct:Location ;
+    dct:title "Calatayud"@es .
 
 cdfa:location-monzón a dct:Location ;
     dct:title "Monzón"@es .
