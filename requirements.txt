@@ -1,0 +1,4 @@
+flask==2.0.3
+rdflib==7.6.0
+gunicorn
+Werkzeug==2.2.2
