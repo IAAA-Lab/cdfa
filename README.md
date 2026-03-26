@@ -1,6 +1,7 @@
 Repository with the code to create Linked Data repository and the thesaurus providing the thematic concepts.
 
 Contents of this folder:
+- RDFcreation: a folder that contains the Python scripts responsible for generating and populating RDF data.
 - data: Turtle and RDF files with the content that should be available in our Linked Data repository
 - fuseki : a folder with the configuration of a Fuseki SPARQL end-point container. This Fuseki deployment incorporates textual indexes on the values of dct:title and dct:description properties.
 - fuseki_storage_creation.py: In case fueros RDF file isn't uploaded manualy in Fuseki SPARQL end-point, this program creates a new dataset in Fuseki (with the textual indexes) and uploads the RDF data.
