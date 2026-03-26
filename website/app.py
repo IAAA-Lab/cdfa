@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 # === CONFIG ===
 SCHEMA_NS = "https://iaaa.es/cdfa/"
-FUEROS_FILE = "data/fueros_complete_18_3_26.ttl"
-CONCEPTS_FILE = "results/output.ttl"
+FUEROS_FILE = "data/fueros_complete_26_3_26.ttl"
+CONCEPTS_FILE = "data/subjects.ttl"
 THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 MAX_LITERAL_CHARS = 150
@@ -354,7 +354,7 @@ li{{background:white;margin:12px;padding:20px;border-radius:12px;box-shadow:0 4p
 </div>
 <h1 style="text-align:center;color:#2c3e50">{type_name.title()}s ({len(instances)})</h1><ul>"""
     
-    for s in sorted(set(instances), key=lambda x: get_concept_label(str(x)) if type_name.lower() == "concept" else str(x))[:100]:
+    for s in sorted(set(instances), key=lambda x: get_concept_label(str(x)) if type_name.lower() == "concept" else str(x))[:3000]:
         short_name = str(s).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
         
         if type_name.lower() == "concept":
@@ -449,7 +449,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
     
     try:
         concepts = get_section_concepts(uri)
-        for c in concepts[:10]:
+        for c in concepts[:100]:
             label, external_url = get_concept_link(c)
             all_properties.append(('🏷️ dct:subject', None, DCTERMS.subject, URIRef(c), label, external_url))
     except:
@@ -458,7 +458,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
     try:
         phrase_results = get_section_phrases(uri)
         seen_hasparts = set()
-        for row in phrase_results[:10]:
+        for row in phrase_results[:100]:
             phrase_uri = row.phrase
             seen_hasparts.add(str(phrase_uri))
             desc_es = str(row.desc_es) if row.desc_es else ""
