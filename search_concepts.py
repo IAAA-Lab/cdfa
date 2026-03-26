@@ -133,7 +133,6 @@ def search_concept_in_section_titles_text_index(subject, label, sparql, subjects
     results = sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
     results = sparql.query().convert()
-    # printResults(results)
     if log_file is not None:
         log_file.write(f"{label}:\n")
     for row in results["results"]["bindings"]:
