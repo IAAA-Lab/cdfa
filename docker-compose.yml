@@ -1,0 +1,10 @@
+# docker-compose.yml - Single service for your app [web:10]
+version: '3.8'
+
+services:
+  fueros-app:
+    build: .
+    ports:
+      - "5013:5013"  # Host:Container port mapping [web:4][web:8][web:12]
+    volumes:
+      - .:/app  # Mount for development (hot reload) - remove for production
