@@ -1,15 +1,29 @@
 from rdflib import Graph, URIRef, Literal
 from rdflib import Graph, URIRef, Literal
 from rdflib.namespace import DCTERMS, Namespace
+from SPARQLWrapper import SPARQLWrapper, JSON
 
 import os
 
 CDFA_BASE_URI = "https://iaaa.es/cdfa/"
 
-FUEROS_FILE = "data/fueros_complete_3_3_26.ttl"
+FUEROS_FILE = "data/fueros_complete.ttl"
 THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 OUTPUT_FOLDER = "results/"
+
+LOG_CONTAINS = "log_contains.txt"
+SUBJECT_ANNOTATIONS_CONTAINS = "subject_annotations_contains.ttl"
+
+LOG_TEXT_INDEX = "log_text_index.txt"
+SUBJECT_ANNOTATIONS_TEXT_INDEX = "subject_annotations_text_index.ttl"
+
+FUSEKI_HOST = 'http://localhost:3030'
+DATASET_NAME = 'datasetFueros'
+ADMIN_USER = 'admin'
+ADMIN_PASS = 'admin'
+ENDPOINT = f'{FUSEKI_HOST}/{DATASET_NAME}/sparql'
+
 
 
 def return_final_concepts():
@@ -33,20 +47,20 @@ def return_final_concepts():
         # print(f"{row.label}")
     return concepts #1092 concepts
 
-def search_concepts_in_sections(concepts):
+def search_concepts_in_sections_contains(concepts):
     input_model = Graph()
     subjects_model = Graph()
     subjects_model.bind("cdfa", Namespace(CDFA_BASE_URI))
     input_model.parse(FUEROS_FILE,format="turtle")
 
-    log_file = open(OUTPUT_FOLDER+"log.txt", "w")
+    log_file = open(OUTPUT_FOLDER+ LOG_CONTAINS, "w")
     for subject, label in concepts:
-        search_concept_in_section_titles(subject, label, input_model, subjects_model, log_file)
+        search_concept_in_section_titles_contains(subject, label, input_model, subjects_model, log_file)
     log_file.close()
     return subjects_model
 
 
-def search_concept_in_section_titles(subject, label, input_model, subjects_model, log_file=None):
+def search_concept_in_section_titles_contains(subject, label, input_model, subjects_model, log_file=None):
     query = """
     PREFIX cdfa: <https://iaaa.es/cdfa/>
     PREFIX dct: <http://purl.org/dc/terms/>
@@ -55,12 +69,10 @@ def search_concept_in_section_titles(subject, label, input_model, subjects_model
     WHERE {
         ?section a cdfa:Section .
         ?section dct:title ?title .
-        ?section dct:hasPart ?phrase .
         OPTIONAL {?section cdfa:systematicVersionPage ?page} .
-        FILTER (lang(?title) = "es") .
-        FILTER (CONTAINS(LCASE(?title),?concept)) .
+        FILTER ((lang(?title) = "es") && CONTAINS(LCASE(?title),?concept)) .
     }
-    ORDER BY ?label
+    ORDER BY ?title
     """
     results = input_model.query(query, initBindings={"concept": Literal(label)})
 
@@ -73,10 +85,8 @@ def search_concept_in_section_titles(subject, label, input_model, subjects_model
         subject_uri = URIRef(subject)
         subjects_model.add((section_uri,DCTERMS.subject,subject_uri) )
 
-
-
-
 '''
+    # An example of query looking up the concept inside the phrases
     PREFIX cdfa: <https://iaaa.es/cdfa/>
     PREFIX dct: <http://purl.org/dc/terms/>
     
@@ -87,12 +97,69 @@ def search_concept_in_section_titles(subject, label, input_model, subjects_model
         ?section dct:hasPart ?phrase .
         ?phrase a cdfa:Phrase .
         ?phrase dct:description ?description .
-        FILTER (lang(?description) = "es") .
-        FILTER (CONTAINS(LCASE(?description),?concept)) .
+        FILTER ((lang(?description) = "es") && CONTAINS(LCASE(?description),?concept)) .
     }
-    ORDER BY ?label
+    ORDER BY ?description
 '''
 
+def search_concepts_in_sections_text_index(concepts):
+    sparql = SPARQLWrapper(ENDPOINT)
+    input_model = Graph()
+    subjects_model = Graph()
+    subjects_model.bind("cdfa", Namespace(CDFA_BASE_URI))
+    input_model.parse(FUEROS_FILE,format="turtle")
+
+    log_file = open(OUTPUT_FOLDER+LOG_TEXT_INDEX, "w")
+    for subject, label in concepts:
+        search_concept_in_section_titles_text_index(subject, label, sparql, subjects_model, log_file)
+    log_file.close()
+    return subjects_model
+
+
+
+def search_concept_in_section_titles_text_index(subject, label, sparql, subjects_model, log_file):
+    query = """
+    PREFIX cdfa: <https://iaaa.es/cdfa/>
+    PREFIX text: <http://jena.apache.org/text#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    SELECT DISTINCT ?section ?score ?title ?page WHERE {
+        ?section a cdfa:Section .
+        ?section dct:title ?title .
+        OPTIONAL {?section cdfa:systematicVersionPage ?page} .
+        (?section ?score) text:query (dct:title '""" + label + """') .
+        FILTER (lang(?title)="es" && ?score > 2.0) .
+    } ORDER BY DESC(?score)
+    """
+    results = sparql.setQuery(query)
+    sparql.setReturnFormat(JSON)
+    results = sparql.query().convert()
+    # printResults(results)
+    if log_file is not None:
+        log_file.write(f"{label}:\n")
+    for row in results["results"]["bindings"]:
+        if log_file is not None:
+            log_file.write(f"\t{row['title']['value']} {row['page']['value']} {row['score']['value']}: {row['section']['value']} dct:subject {subject}\n")
+        section_uri = URIRef(row['section']['value'])
+        subject_uri = URIRef(subject)
+        subjects_model.add((section_uri,DCTERMS.subject,subject_uri) )
+
+'''
+    # An example of query combining two text queries
+    PREFIX cdfa: <https://iaaa.es/cdfa/>
+    PREFIX text: <http://jena.apache.org/text#>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    SELECT DISTINCT ?section ?scoretot WHERE {
+        ?section a cdfa:Section .
+        ?section dct:title ?title .
+        ?section dct:hasPart ?phrase .
+        ?phrase a cdfa:Phrase .
+  		?phrase dct:description ?description .
+        OPTIONAL { (?section ?score1) text:query (dct:title 'causas de judios') }
+  		  OPTIONAL { (?phrase ?score2) text:query (dct:description 'causas de judios') }
+        BIND (COALESCE(?score1,0) + COALESCE(?score2,0) AS ?scoretot)
+        FILTER ((?scoretot >0) && (lang(?title)="es") && (lang(?description)="es"))
+      } ORDER BY DESC(?scoretot)
+'''
 
 if __name__ == "__main__":
 
@@ -100,8 +167,17 @@ if __name__ == "__main__":
     # python3 -m venv .venv
     # source .venv/bin/activate
     # VSCode autoactivate environment in Settings, python.terminal.activateEnvironment
-    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-    concepts = return_final_concepts()
-    subjects_model = search_concepts_in_sections(concepts)
-    subjects_model.serialize(OUTPUT_FOLDER+"output.ttl", format = "turtle")
+    # pip freeze > requirements.txt
+    # pip install -r requirements.txt
+    # apt-get install python3-tk
+    # python3 -m pip install SPARQLWrapper
+    
 
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+    concepts = return_final_concepts()
+    subjects_model = search_concepts_in_sections_contains(concepts)
+    subjects_model.serialize(OUTPUT_FOLDER+ SUBJECT_ANNOTATIONS_CONTAINS, format = "turtle")
+
+    subjects_model = search_concepts_in_sections_text_index(concepts)
+    subjects_model.serialize(OUTPUT_FOLDER+ SUBJECT_ANNOTATIONS_TEXT_INDEX, format = "turtle")
