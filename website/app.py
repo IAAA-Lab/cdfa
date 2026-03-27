@@ -1,4 +1,6 @@
 from flask import Flask, request
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.wrappers import Response
 from rdflib import Graph, Namespace, Literal, URIRef
 from rdflib.namespace import RDF, RDFS, DCTERMS, FOAF, SKOS
 import os
@@ -8,7 +10,7 @@ app = Flask(__name__)
 # === CONFIG ===
 SCHEMA_NS = "https://iaaa.es/cdfa/"
 FUEROS_FILE = "data/fueros_complete_26_3_26.ttl"
-CONCEPTS_FILE = "data/subjects.ttl"
+CONCEPTS_FILE = "results/subjects.ttl"
 THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 MAX_LITERAL_CHARS = 150
@@ -50,7 +52,7 @@ TRANSLATIONS = {
 }
 
 HIERARCHY_LABELS = {
-    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Evento Judicial", "Persona", "Ubicación", "Concepto"],
+    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Cortes Generales", "Persona", "Ubicación", "Concepto"],
     'en': ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept"]
 }
 
@@ -165,7 +167,7 @@ def get_display_label(uri: URIRef, frag: str = "") -> tuple:
     elif 'courtevent' in frag_name.lower():
         try:
             title, date = get_courtevent_info(uri)
-            return f"{title} ({date})" if date else title or frag_name, 'courtevent'
+            return f"{title}" if date else title or frag_name, 'courtevent'
         except:
             return frag_name, 'courtevent'
     elif 'section' in frag_name.lower():
@@ -449,7 +451,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
     
     try:
         concepts = get_section_concepts(uri)
-        for c in concepts[:100]:
+        for c in concepts[:10]:
             label, external_url = get_concept_link(c)
             all_properties.append(('🏷️ dct:subject', None, DCTERMS.subject, URIRef(c), label, external_url))
     except:
@@ -458,7 +460,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
     try:
         phrase_results = get_section_phrases(uri)
         seen_hasparts = set()
-        for row in phrase_results[:100]:
+        for row in phrase_results[:10]:
             phrase_uri = row.phrase
             seen_hasparts.add(str(phrase_uri))
             desc_es = str(row.desc_es) if row.desc_es else ""
@@ -538,6 +540,6 @@ if __name__ == "__main__":
     print("✅ CDFA FUEROS: ENGLISH/SPANISH TRANSLATION ✅ SYNTAX FIXED!")
     print("✅ ?lang=en or ?lang=es - Language switcher top-right")
     print("✅ No more syntax errors - COMPLETE working code")
-    print("http://127.0.0.1:5000/")
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    print("https://127.0.0.1:5000/")
+    app.run(host="0.0.0.0", port=5013, debug=False)
 
