@@ -1,8 +1,6 @@
 from flask import Flask, request
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from werkzeug.wrappers import Response
 from rdflib import Graph, Namespace, Literal, URIRef
-from rdflib.namespace import RDF, RDFS, DCTERMS, FOAF, SKOS
+from rdflib.namespace import RDF, RDFS, DCTERMS, FOAF, SKOS , DC 
 import os
 
 app = Flask(__name__)
@@ -10,7 +8,7 @@ app = Flask(__name__)
 # === CONFIG ===
 SCHEMA_NS = "https://iaaa.es/cdfa/"
 FUEROS_FILE = "data/fueros_complete_26_3_26.ttl"
-CONCEPTS_FILE = "results/subjects.ttl"
+CONCEPTS_FILE = "data/subjects.ttl"
 THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 MAX_LITERAL_CHARS = 150
@@ -52,8 +50,8 @@ TRANSLATIONS = {
 }
 
 HIERARCHY_LABELS = {
-    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Cortes Generales", "Persona", "Ubicación", "Concepto"],
-    'en': ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept"]
+    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Cortes Generales", "Persona", "Ubicación", "Concepto", "ConceptScheme"],
+    'en': ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept", "ConceptSchema"]
 }
 
 # Load RDF graphs
@@ -93,7 +91,7 @@ g.bind("skos", SKOS)
 concepts_g.bind("dct", DCTERMS)
 thesaurus_g.bind("skos", SKOS)
 
-HIERARCHY = ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept"]
+HIERARCHY = ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept", "ConceptScheme"]
 ENDPOINT_TERMINALS = {"Location", "Person", "CourtEvent", "Concept"}
 
 def get_lang():
@@ -106,7 +104,7 @@ def t(key):
     lang = get_lang()
     return TRANSLATIONS[lang].get(key, key)
 
-# [ALL YOUR EXISTING FUNCTIONS - COPIED EXACTLY]
+
 def short_literal(text: str) -> str:
     if len(text) <= MAX_LITERAL_CHARS:
         return text
@@ -119,12 +117,54 @@ def get_concept_label(concept_uri: str) -> str:
             return str(label)
     for _, _, label in thesaurus_g.triples((uri, SKOS.prefLabel, None)):
         return str(label)
+    # ✅ AltLabel fallback
+    for _, _, label in thesaurus_g.triples((uri, SKOS.altLabel, None)):
+        if isinstance(label, Literal) and label.language == "es":
+            return str(label)
+    # ✅ Fragment as final fallback
     return str(uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
 
-def get_concept_link(concept_uri: str) -> tuple:
+def get_concept_link(concept_uri: str, as_internal=False) -> tuple:
+    uri = URIRef(concept_uri)
     label = get_concept_label(concept_uri)
-    external_url = CONCEPT_SCHEME_URL
-    return label, external_url
+
+    # 1. skos:exactMatch (external canonical URL)
+    matches = list(thesaurus_g.triples((uri, SKOS.exactMatch, None)))
+    if matches and not as_internal:
+        match_url = matches[0][2]
+        if isinstance(match_url, URIRef):
+            return label, str(match_url)
+
+    # 2. skos:related (alternative external URL)
+    related = list(thesaurus_g.triples((uri, SKOS.related, None)))
+    if related and not as_internal:
+        rel_url = related[0][2]
+        if isinstance(rel_url, URIRef):
+            return label, str(rel_url)
+
+    # 3. Concept's own URI
+    if list(thesaurus_g.triples((uri, RDF.type, SKOS.Concept))):
+        frag = get_frag(uri)
+        if as_internal:
+            return label, f"/cdfa/resource/{frag}"
+        return label, str(uri)
+
+    # 4. skos:seeAlso links
+    for _, _, seealso in thesaurus_g.triples((uri, SKOS.seeAlso, None)):
+        if isinstance(seealso, URIRef):
+            if not as_internal:
+                return label, str(seealso)
+            frag = get_frag(seealso)
+            return label, f"/cdfa/resource/{frag}"
+
+    # 5. fallback: scheme + fragment
+    frag = str(uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+    fallback = f"{CONCEPT_SCHEME_URL.rstrip('/')}/{frag}"
+    if as_internal:
+        return label, f"/cdfa/resource/{frag}"
+    return label, fallback
+
+
 
 def get_resource_titles(uri: URIRef) -> tuple:
     query_es = f"""PREFIX dct: <http://purl.org/dc/terms/>
@@ -268,8 +308,56 @@ def get_section_concepts(section_uri):
     results = concepts_g.query(query)
     return [str(row.concept) for row in results]
 
+
+def get_frag(uri): 
+    frag = str(uri).rsplit("/",1)[-1].rsplit("#",1)[-1]
+    return frag.replace("skos/", "").strip('/')
+
+def get_property_name(p):
+    """✅ EXACT RDF NAMES: dc:title, skos:hasTopConcept, rdf:type, etc."""
+    if p == RDF.type: return "rdf:type"
+    if p == SKOS.prefLabel: return "skos:prefLabel"
+    if p == SKOS.narrower: return "skos:narrower"
+    if p == SKOS.broader: return "skos:broader"
+    #if p == SKOS.inScheme: return "skos:inScheme"
+    if p == SKOS.hasTopConcept: return "skos:hasTopConcept"
+    if p == DCTERMS.title: return "dcterms:title"
+    if p == DCTERMS.creator: return "dcterms:creator"
+    if p == DCTERMS.description: return "dcterms:description"
+    if p == DCTERMS.modified: return "dcterms:modified"
+    if p == DC.title: return "dc:title"
+    if p == DC.creator: return "dc:creator"
+    if p == DC.rights: return "dc:rights"
+    if p == DC.subject: return "dc:subject"
+    if p == DC.language: return "dc:language"
+    if p == DC.date: return "dc:date"
+    return str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/',1)[-1]
+
+def try_both_uris(frag):
+    uris_to_try = [
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/skos/{frag}"),      # ✅ Uses CONCEPT_SCHEME_URL
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/{frag}"),           
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/vocab/{frag}"),     
+        URIRef(f"{SCHEMA_NS}{frag}")                                 # ✅ CDFA fallback
+    ]
+    for uri in uris_to_try:
+        if list(thesaurus_g.triples((uri, None, None))) or list(g.triples((uri, None, None))):
+            print(f"✅ FOUND {frag} at: {uri}")
+            return uri
+    print(f"❌ NOT FOUND {frag}")
+    return None
+
+def get_narrower(uri): return list(thesaurus_g.triples((uri, SKOS.narrower, None)))
+
+
+def get_top_concepts(): 
+    if not CONCEPT_SCHEME_URL: return []
+    return list(thesaurus_g.triples((URIRef(CONCEPT_SCHEME_URL), SKOS.hasTopConcept, None)))
+    
+    
 # === HOME ===
-@app.route("/")
+@app.route("/cdfa/")
+@app.route("/cdfa")
 def index():
     lang = get_lang()
     type_counts = {}
@@ -278,7 +366,7 @@ def index():
         type_counts[type_label] = type_counts.get(type_label, 0) + 1
     
     concept_count = len(list(thesaurus_g.triples((None, RDF.type, SKOS.Concept))))
-    type_counts["Concept"] = concept_count  # ✅ FIXED SYNTAX ERROR
+    type_counts["Concept"] = concept_count
 
     html = f"""<!DOCTYPE html>
 <html><head><title>{t('title')}</title>
@@ -296,8 +384,8 @@ def index():
 </style></head>
 <body>
     <div class="lang-switch">
-        <a href="?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
-        <a href="?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
+        <a href="/cdfa/?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
+        <a href="/cdfa/?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
     </div>
     <div class="header">
         <h1>{t('title')}</h1>
@@ -309,16 +397,32 @@ def index():
     icons = {"Book": "📖", "Part": "📄", "Chapter": "📑", "Section": "📝", "Phrase": "✍️", "CourtEvent": "⚖️", "Person": "👤", "Location": "📍", "Concept": "🏷️"}
     hierarchy_labels = HIERARCHY_LABELS[lang]
     for i, type_name in enumerate(HIERARCHY):
+        # skip "ConceptScheme" so it won't appear as a type tile
+        if type_name == "ConceptScheme":
+            continue
         count = type_counts.get(type_name, 0)
         icon = icons.get(type_name, "🔗")
         label = hierarchy_labels[i]
-        html += f'<div class="hierarchy-item"><a href="/type/{type_name.lower()}?lang={lang}"><div style="font-size: 3.5em;">{icon}</div><div>{label}</div><div style="font-size: 2em;">{count}</div></a></div>'
+        html += f'<div class="hierarchy-item"><a href="/cdfa/type/{type_name.lower()}?lang={lang}"><div style="font-size: 3.5em;">{icon}</div><div>{label}</div><div style="font-size: 2em;">{count}</div></a></div>'
 
+    # ✅ Add ConceptScheme button
+    if CONCEPT_SCHEME_URL:
+        scheme_count = len(list(thesaurus_g.triples((None, RDF.type, SKOS.ConceptScheme))))
+        html += f'''
+        <div class="hierarchy-item">
+            <a href="/cdfa/conceptscheme?lang={lang}">
+                <div style="font-size: 3.5em;">🏛️</div>
+                <div>{"ConceptScheme" if lang == "es" else "ConceptScheme"}</div>
+                <div style="font-size: 2em;">{scheme_count}</div>
+            </a>
+        </div>
+        '''
+    
     html += '</div></body></html>'
     return html
 
 # === TYPE LIST ===
-@app.route("/type/<type_name>")
+@app.route("/cdfa/type/<type_name>")
 def by_type(type_name):
     lang = get_lang()
     class_map = {
@@ -351,8 +455,8 @@ li{{background:white;margin:12px;padding:20px;border-radius:12px;box-shadow:0 4p
 </style>
 <body>
 <div class="lang-switch">
-    <a href="/type/{type_name}?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
-    <a href="/type/{type_name}?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
+    <a href="/cdfa/type/{type_name}?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
+    <a href="/cdfa/type/{type_name}?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
 </div>
 <h1 style="text-align:center;color:#2c3e50">{type_name.title()}s ({len(instances)})</h1><ul>"""
     
@@ -367,23 +471,37 @@ li{{background:white;margin:12px;padding:20px;border-radius:12px;box-shadow:0 4p
             html += f'<li><span class="terminal-link">🔸 {label}</span></li>'
         else:
             label, _ = get_display_label(s, short_name)
-            html += f'<li><a href="/resource/{short_name}?lang={lang}" class="resource-link">📋 {label}</a></li>'
+            html += f'<li><a href="/cdfa/resource/{short_name}?lang={lang}" class="resource-link">📋 {label}</a></li>'
     
-    html += f'</ul><p style="text-align:center"><a href="/?lang={lang}" style="background:#3498db;color:white;padding:18px 36px;border-radius:12px;font-size:1.3em;text-decoration:none;">{t("home")}</a></p></body></html>'
+    html += f'</ul><p style="text-align:center"><a href="/cdfa/?lang={lang}" style="background:#3498db;color:white;padding:18px 36px;border-radius:12px;font-size:1.3em;text-decoration:none;">{t("home")}</a></p></body></html>'
     return html
 
 # === RESOURCE VIEW ===
-@app.route("/resource/<path:frag>")
+@app.route("/cdfa/resource/<path:frag>")
 def resource(frag):
     lang = get_lang()
     frag = frag.strip('/')
-    uri = URIRef(f"{SCHEMA_NS}{frag}")
     
-    triples = list(g.triples((uri, None, None)))
-    inverse_query = f"CONSTRUCT WHERE {{ ?s ?p <{uri}> . }}"
-    inverse_triples = list(g.query(inverse_query))
-
-    if not triples and not inverse_triples:
+    # ✅ TRY CDFA FIRST, then Thesaurus URIs
+    uri_candidates = [
+        URIRef(f"{SCHEMA_NS}{frag}"),                          # 1. CDFA: https://iaaa.es/cdfa/510
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/skos/{frag}"),   # 2. Thesaurus: .../skos/510
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/{frag}"),        # 3. .../510
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/vocab/{frag}")   # 4. .../vocab/510
+    ]
+    
+    uri = None
+    for candidate in uri_candidates:
+        # ✅ Check if EITHER graph has triples about this URI
+        if (list(g.triples((candidate, None, None))) or 
+            list(thesaurus_g.triples((candidate, None, None))) or
+            list(g.query(f"CONSTRUCT WHERE {{ ?s ?p <{candidate}> . }}")) or
+            list(thesaurus_g.query(f"CONSTRUCT WHERE {{ ?s ?p <{candidate}> . }}"))):
+            uri = candidate
+            print(f"✅ FOUND {frag} → {uri}")
+            break
+    
+    if not uri:
         return f"""<!DOCTYPE html><html><head><title>{t('not_found')}</title>
 <style>body{{font-family:'Segoe UI',Arial;max-width:800px;margin:0 auto;padding:100px;background:#f8f9fa;text-align:center}}
 .error-box{{background:white;padding:60px;border-radius:20px;box-shadow:0 15px 35px rgba(0,0,0,0.1)}}
@@ -392,14 +510,106 @@ p{{color:#7f8c8d;font-size:1.3em;line-height:1.6}}</style>
 <body><div class="error-box">
 <h1>❌ {frag}</h1>
 <p>{t('no_exist')}</p>
-<a href="/?lang={lang}" style="background:#3498db;color:white;padding:15px 30px;border-radius:12px;font-size:1.2em;text-decoration:none;display:inline-block;margin-top:30px">{t('home')}</a>
+<a href="/cdfa/?lang={lang}" style="background:#3498db;color:white;padding:15px 30px;border-radius:12px;font-size:1.2em;text-decoration:none;display:inline-block;margin-top:30px">{t('home')}</a>
 </div></body></html>""", 404
+    
+    # ✅ ALL FORWARD TRIPLES FROM BOTH GRAPHS
+    triples = (list(g.triples((uri, None, None))) + 
+               list(thesaurus_g.triples((uri, None, None))))
+    
+    # ✅ ALL INVERSE TRIPLES FROM BOTH GRAPHS
+    inverse_query = f"CONSTRUCT WHERE {{ ?s ?p <{uri}> . }}"
+    inverse_triples = (list(g.query(inverse_query)) + 
+                       list(thesaurus_g.query(inverse_query)))
     
     return render_html_resource(uri, triples, inverse_triples, frag, lang)
 
+
+
+@app.route("/cdfa/conceptscheme")
+def conceptscheme():
+    lang = get_lang()
+    SKIP_CONCEPTSCHEME_PROPERTIES = {
+        DC.creator,
+        DC.contributor,        # dc:contributor
+        DC.publisher,          # dc:publisher
+        DC.rights,
+        DC.subject,
+        DC.description,        # dc:description
+        DC.date,
+        DCTERMS.modified,
+        DC.language,
+    }
+
+    html = f"""<!DOCTYPE html><html><head><title>{t('title')} - ConceptScheme</title>
+<style>
+body{{font-family:'Segoe UI',Arial;max-width:1400px;margin:0 auto;padding:50px;background:#f8f9fa}}
+.lang-switch{{position:fixed;top:20px;right:20px;z-index:1000}}
+.lang-btn{{background:#3498db;color:white;padding:10px 20px;margin:0 5px;border-radius:25px;text-decoration:none;font-weight:500}}
+.lang-btn.active{{background:#2ecc71}}
+.scheme-box{{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:50px;border-radius:25px;margin:50px 0;box-shadow:0 20px 40px rgba(0,0,0,0.1)}}
+table{{width:100%;font-size:14px;overflow:hidden;background:white;border-radius:15px}}
+th{{background:#2c3e50;color:white;padding:18px 15px;font-weight:600}}
+td{{color:black;padding:18px 15px;border-bottom:1px solid #eee;vertical-align:top}}
+.property-name{{font-weight:600;width:280px;font-family:monospace}}
+.concept-link{{color:#27ae60;font-weight:500;padding:8px 14px;border-radius:8px;background:#e8f8f5;border-left:4px solid #2ecc71;display:inline-block;text-decoration:none}}
+</style></head>
+<body>
+<div class="lang-switch">
+    <a href="/cdfa/conceptscheme?lang=es" class="lang-btn {'active' if lang == "es" else ''}">🇪🇸</a>
+    <a href="/cdfa/conceptscheme?lang=en" class="lang-btn {'active' if lang == "en" else ''}">🇬🇧</a>
+</div>
+<h1 style="text-align:center;color:#2c3e50;margin-bottom:40px">🏛️ ConceptScheme</h1>
+<div class="scheme-box">
+    <h2 style="color:white;margin-bottom:25px">📋 {t('properties')}</h2>
+    <table><tr><th>Propiedad</th><th>Valor</th></tr>"""
+    
+    for s, p, o in thesaurus_g.triples((URIRef(CONCEPT_SCHEME_URL), None, None)):
+        if p in SKIP_CONCEPTSCHEME_PROPERTIES:
+            continue
+
+        prop_name = get_property_name(p)
+
+        # ✅ Special case: rdf:type → no link, just plain text
+        if p == RDF.type and isinstance(o, URIRef):
+            # show eg. "skos:ConceptScheme" or "ConceptScheme" as plain text
+            obj_label = get_concept_label(str(o))
+            html += f'<tr><td class="property-name">{prop_name}</td><td>{obj_label}</td></tr>'
+
+        elif isinstance(o, URIRef):
+            frag = get_frag(o)
+            label = get_concept_label(str(o))
+            html += f'<tr><td class="property-name">{prop_name}</td><td><a href="/cdfa/resource/{frag}" class="concept-link">{label}</a></td></tr>'
+
+        else:
+            html += f'<tr><td class="property-name">{prop_name}</td><td>{short_literal(str(o))}</td></tr>'
+    
+    html += f'''</table></div>
+<p style="text-align:center">
+    <a href="/cdfa/?lang={lang}" style="background:#3498db;color:white;padding:18px 36px;border-radius:12px;font-size:1.3em;text-decoration:none;">{t("home")}</a>
+</p></body></html>'''
+    return html
+    
+    
+    
+    
 def render_html_resource(uri, triples, inverse_triples, frag, lang):
     label, rtype = get_display_label(uri, frag)
-    
+
+    SKIP_PROPERTIES = {
+        RDF.type,
+        DC.title,
+        DC.creator,
+        DCTERMS.publisher,
+        DC.rights,
+        DC.subject,
+        DC.language,
+        DC.date,
+        DCTERMS.modified,
+        SKOS.inScheme,
+        SKOS.hasTopConcept,
+    } 
+
     html = f"""<!DOCTYPE html><html><head><title>{label}</title>
 <style>
 body{{font-family:'Segoe UI',Arial;max-width:1400px;margin:0 auto;padding:30px;background:#f8f9fa}}
@@ -420,19 +630,18 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
 </style></head>
 <body>
 <div class="lang-switch">
-    <a href="/resource/{frag}?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
-    <a href="/resource/{frag}?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
+    <a href="/cdfa/resource/{frag}?lang=es" class="lang-btn {'active' if lang == 'es' else ''}">🇪🇸 ES</a>
+    <a href="/cdfa/resource/{frag}?lang=en" class="lang-btn {'active' if lang == 'en' else ''}">🇬🇧 EN</a>
 </div>
 <div class="header">
     <h1>🔗 {label}</h1>
     <p style="color:#7f8c8d">{uri}</p>
-    <a href="/?lang={lang}" style="background:#3498db;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin-right:10px">{t('home')}</a>
+    <a href="/cdfa/?lang={lang}" style="background:#3498db;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin-right:10px">{t('home')}</a>
 </div>
 """
 
-    # [YOUR EXISTING PROPERTIES LOGIC - UNCHANGED]
     all_properties = []
-    
+
     try:
         title_es, title_la = get_resource_titles(uri)
         if title_es:
@@ -441,22 +650,27 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
             all_properties.append(('TITLE (LA)', None, DCTERMS.title, Literal(title_la)))
     except:
         pass
-    
+
     if 'book' in rtype.lower():
         try:
             book_info = get_book_info(uri)
-            all_properties.append(('📖 BOOK INFO', None, None, Literal(f"Created: {book_info['created']} | Desc: {short_literal(book_info['description'])}")))
+            all_properties.append(
+                ('📖 BOOK INFO', None, None,
+                 Literal(f"Created: {book_info['created']} | Desc: {short_literal(book_info['description'])}"))
+            )
         except:
             pass
-    
+
     try:
         concepts = get_section_concepts(uri)
-        for c in concepts[:10]:
-            label, external_url = get_concept_link(c)
-            all_properties.append(('🏷️ dct:subject', None, DCTERMS.subject, URIRef(c), label, external_url))
+        for c in concepts[:100]:
+            label, external_url = get_concept_link(c, as_internal=True)
+            all_properties.append(
+                ('🏷️ dct:subject', None, DCTERMS.subject, URIRef(c), label, external_url)
+            )
     except:
         pass
-    
+
     try:
         phrase_results = get_section_phrases(uri)
         seen_hasparts = set()
@@ -467,59 +681,67 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
             desc_la = str(row.desc_la) if row.desc_la else ""
             phrase_id = str(row.phrase_id)
             phrase_text = short_literal(desc_es or desc_la or phrase_id)
-            all_properties.append(('hasPart', None, DCTERMS.hasPart, phrase_uri, phrase_text))
+            all_properties.append(
+                ('hasPart', None, DCTERMS.hasPart, phrase_uri, phrase_text)
+            )
     except:
         pass
-    
+
     for s, p, o in triples:
+        if p in SKIP_PROPERTIES:
+            continue        
         if p == DCTERMS.title:
             continue
         if p == DCTERMS.hasPart and str(o) in seen_hasparts:
             continue
-        
+        if p == SKOS.inScheme:
+            continue
+            
+            
         pred = str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]
         if isinstance(o, URIRef):
             all_properties.append((pred, s, p, o))
         elif isinstance(o, Literal):
             all_properties.append((pred, s, p, o))
-    
+
     html += f"<h2>📋 {t('properties')} ({len(triples)})</h2><table><tr><th>Predicate</th><th>Object</th></tr>"
-    
+
     for prop in all_properties:
         if len(prop) == 6:  # CONCEPT
             pred_label, s, p, target_uri, display_text, external_url = prop
-            obj_html = f'<a href="{external_url}" class="concept-link" title="{str(target_uri)}" target="_blank">{display_text} ↗</a>'
+            obj_html = f'<a href="{external_url}" class="concept-link" title="{str(target_uri)}">{display_text}</a>'
             html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
-            
+
         elif len(prop) == 5:  # Phrase
             pred_label, s, p, target_uri, display_text = prop
             short_name = str(target_uri).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
-            obj_html = f'<span class="phrase-link"><a href="/resource/{short_name}?lang={lang}" title="{str(target_uri)}">{display_text}</a></span>'
+            obj_html = f'<span class="phrase-link"><a href="/cdfa/resource/{short_name}?lang={lang}" title="{str(target_uri)}">{display_text}</a></span>'
             html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
-            
+
         else:  # Normal triples
             pred_label, s, p, o = prop
-            
+
             if isinstance(o, URIRef):
                 short_name = str(o).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
                 if short_name in ENDPOINT_TERMINALS:
                     label, _ = get_display_label(o, short_name)
                     obj_html = f'<span class="terminal-link" title="{str(o)}">🔸 {label}</span>'
                 elif list(thesaurus_g.triples((o, SKOS.prefLabel, None))):
-                    label, external_url = get_concept_link(str(o))
-                    obj_html = f'<a href="{external_url}" class="concept-link" title="{str(o)}" target="_blank">{label} ↗</a>'
+                    # ✅ Internal link for SKOS concept
+                    label, external_url = get_concept_link(str(o), as_internal=True)
+                    obj_html = f'<a href="{external_url}" class="concept-link" title="{str(o)}">{label}</a>'
                 else:
                     label, _ = get_display_label(o, short_name)
-                    obj_html = f'<a href="/resource/{short_name}?lang={lang}" class="resource-link" title="{str(o)}">{label}</a>'
+                    obj_html = f'<a href="/cdfa/resource/{short_name}?lang={lang}" class="resource-link" title="{str(o)}">{label}</a>'
             elif isinstance(o, Literal):
                 display = short_literal(str(o))
                 safe_full = str(o).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 obj_html = f'<span title="{safe_full}" class="literal-trunc">{display}</span>'
             else:
                 obj_html = str(o)
-            
+
             html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
-    
+
     html += '</table>'
 
     html += f"<h2>🔗 {t('related_resources')} ({len(inverse_triples)})</h2><table><tr><th>{t('resource')}</th><th>Relation</th></tr>"
@@ -531,7 +753,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
         else:
             s_label, _ = get_display_label(s, s_frag)
             pred = str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]
-            html += f"<tr><td><a href='/resource/{s_frag}?lang={lang}' class='resource-link'>{s_label}</a></td><td><strong>{pred}</strong></td></tr>"
+            html += f"<tr><td><a href='/cdfa/resource/{s_frag}?lang={lang}' class='resource-link'>{s_label}</a></td><td><strong>{pred}</strong></td></tr>"
     html += "</table></body></html>"
 
     return html
