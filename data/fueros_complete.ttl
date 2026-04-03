@@ -86,6 +86,13 @@ cdfa:chronologicalVersionPage a rdf:Property ;
     rdfs:isDefinedBy cdfa: ;
     rdfs:range rdfs:Literal .
 
+cdfa:courtevent-560 a cdfa:CourtEvent ;
+    dct:date "1235" ;
+    dct:hasPart cdfa:phrase-court-560-2713 ;
+    dct:spatial cdfa:location-zaragoza ;
+    dct:title "Jaime Primero. Zaragoza, 1235."@es ;
+    cdfa:chairedBy cdfa:person-jaime_primero .
+
 cdfa:systematicVersionPage a rdf:Property ;
     rdfs:label "chaired by"@en ;
     rdfs:comment "The page containing the original text in the systematic version of the book."@en ;
@@ -7438,6 +7445,9 @@ cdfa:phrase-court-558-2711 a cdfa:Phrase ;
     dct:description " "@la .
 
 cdfa:phrase-court-559-2712 a cdfa:Phrase ;
+    dct:description " "@la .
+
+cdfa:phrase-court-560-2713 a cdfa:Phrase ;
     dct:description " "@la .
 
 cdfa:section-1-1 a cdfa:Section ;
