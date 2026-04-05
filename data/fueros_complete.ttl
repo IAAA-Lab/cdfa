@@ -86,13 +86,6 @@ cdfa:chronologicalVersionPage a rdf:Property ;
     rdfs:isDefinedBy cdfa: ;
     rdfs:range rdfs:Literal .
 
-cdfa:courtevent-560 a cdfa:CourtEvent ;
-    dct:date "1235" ;
-    dct:hasPart cdfa:phrase-court-560-2713 ;
-    dct:spatial cdfa:location-zaragoza ;
-    dct:title "Jaime Primero. Zaragoza, 1235."@es ;
-    cdfa:chairedBy cdfa:person-jaime_primero .
-
 cdfa:systematicVersionPage a rdf:Property ;
     rdfs:label "chaired by"@en ;
     rdfs:comment "The page containing the original text in the systematic version of the book."@en ;
@@ -727,6 +720,13 @@ cdfa:courtevent-559 a cdfa:CourtEvent ;
     dct:hasPart cdfa:phrase-court-559-2712 ;
     dct:spatial cdfa:location-teruel ;
     dct:title "Jaime Primero. En Teruel, 1259."@es ;
+    cdfa:chairedBy cdfa:person-jaime_primero .
+
+cdfa:courtevent-560 a cdfa:CourtEvent ;
+    dct:date "1235" ;
+    dct:hasPart cdfa:phrase-court-560-2713 ;
+    dct:spatial cdfa:location-zaragoza ;
+    dct:title "Jaime Primero. Zaragoza, 1235."@es ;
     cdfa:chairedBy cdfa:person-jaime_primero .
 
 cdfa:location-alagón a dct:Location ;
@@ -12506,7 +12506,7 @@ cdfa:section-9-505 a cdfa:Section ;
         cdfa:phrase-9-505-1795,
         cdfa:phrase-9-505-1796,
         cdfa:phrase-9-505-1797 ;
-    dct:relation cdfa:courtevent-513 ;
+    dct:relation cdfa:courtevent-560 ;
     dct:title "Confirmación de la paz."@es,
         "De confirmatione pacis."@la ;
     cdfa:chronologicalVersionPage "f.28." ;
