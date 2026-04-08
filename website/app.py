@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 # === CONFIG ===
 SCHEMA_NS = "https://iaaa.es/cdfa/"
-FUEROS_FILE = "data/fueros_complete_26_3_26.ttl"
-CONCEPTS_FILE = "data/subjects.ttl"
+FUEROS_FILE = "data/fueros_complete.ttl"
+CONCEPTS_FILE = "results/subjects.ttl"
 THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 MAX_LITERAL_CHARS = 150
@@ -16,7 +16,7 @@ MAX_LITERAL_CHARS = 150
 # ✅ TRANSLATION DICTIONARY
 TRANSLATIONS = {
     'es': {
-        'title': '📚 CDFA Fueros de Aragón',
+        'title': '📚 CDFA: Fueros de Reino de Aragón',
         'triples': 'triples',
         'concepts': 'conceptos',
         'home': '🏠 Inicio',
@@ -32,7 +32,7 @@ TRANSLATIONS = {
         'haspart': 'hasPart'
     },
     'en': {
-        'title': '📚 CDFA Aragonian Fueros',
+        'title': '📚 CDFA: Charters of the Aragon Kingdom',
         'triples': 'triples',
         'concepts': 'concepts',
         'home': '🏠 Home',
@@ -50,7 +50,7 @@ TRANSLATIONS = {
 }
 
 HIERARCHY_LABELS = {
-    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Cortes Generales", "Persona", "Ubicación", "Concepto", "ConceptScheme"],
+    'es': ["Libro", "Parte", "Capítulo", "Sección", "Frase", "Cortes Generales", "Persona", "Ubicación", "Concepto", "Cuadro de clasificación"],
     'en': ["Book", "Part", "Chapter", "Section", "Phrase", "CourtEvent", "Person", "Location", "Concept", "ConceptSchema"]
 }
 
@@ -302,11 +302,15 @@ def get_section_phrases(section_uri):
     return list(results)
 
 def get_section_concepts(section_uri):
-    query = f"""PREFIX dct: <http://purl.org/dc/terms/>
-    SELECT DISTINCT ?concept
-    WHERE {{ <{section_uri}> dct:subject ?concept . }}"""
-    results = concepts_g.query(query)
-    return [str(row.concept) for row in results]
+    # Look in both graphs
+    in_g = list(g.triples((section_uri, DCTERMS.subject, None)))
+    in_concepts = list(concepts_g.triples((section_uri, DCTERMS.subject, None)))
+    # Aggregate all distinct ?concept objects
+    concepts = set()
+    for s, p, o in in_g + in_concepts:
+        if isinstance(o, URIRef):
+            concepts.add(str(o))
+    return list(concepts)
 
 
 def get_frag(uri): 
@@ -464,8 +468,8 @@ li{{background:white;margin:12px;padding:20px;border-radius:12px;box-shadow:0 4p
         short_name = str(s).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
         
         if type_name.lower() == "concept":
-            label, external_url = get_concept_link(str(s))
-            html += f'<li><a href="{external_url}" class="concept-link" target="_blank">🏷️ {label} ↗</a></li>'
+            label, internal_url = get_concept_link(str(s), as_internal=True)
+            html += f'<li><a href="{internal_url}" class="concept-link">{label}</a></li>'
         elif short_name in ENDPOINT_TERMINALS:
             label, _ = get_display_label(s, short_name)
             html += f'<li><span class="terminal-link">🔸 {label}</span></li>'
@@ -674,7 +678,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
     try:
         phrase_results = get_section_phrases(uri)
         seen_hasparts = set()
-        for row in phrase_results[:10]:
+        for row in phrase_results[:100]:
             phrase_uri = row.phrase
             seen_hasparts.add(str(phrase_uri))
             desc_es = str(row.desc_es) if row.desc_es else ""
@@ -704,6 +708,33 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
         elif isinstance(o, Literal):
             all_properties.append((pred, s, p, o))
 
+    # -----------
+    # NEW BLOCK: add "used as subject in section X" for SKOS concepts
+    # -----------
+    is_skos_concept = (
+        list(thesaurus_g.triples((uri, RDF.type, SKOS.Concept))) or
+        list(thesaurus_g.triples((uri, SKOS.prefLabel, None)))
+    )
+    sections_as_subject = []
+
+    if is_skos_concept:
+        # Collect all sections that have this concept as dct:subject
+        for s, p, o in g.triples((None, DCTERMS.subject, uri)):
+            if "section" in str(s).lower():
+                sections_as_subject.append(s)
+        for s, p, o in concepts_g.triples((None, DCTERMS.subject, uri)):
+            if "section" in str(s).lower():
+                sections_as_subject.append(s)
+        sections_as_subject = list(set(sections_as_subject))
+
+        for section_uri in sorted(sections_as_subject, key=str):
+            frag = get_frag(section_uri)
+            label, _ = get_display_label(section_uri, frag)
+            all_properties.append(
+                ('🏷️ used as subject in section', None, DCTERMS.subject, section_uri, label)
+            )
+    # -----------
+
     html += f"<h2>📋 {t('properties')} ({len(triples)})</h2><table><tr><th>Predicate</th><th>Object</th></tr>"
 
     for prop in all_properties:
@@ -717,6 +748,16 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
             short_name = str(target_uri).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
             obj_html = f'<span class="phrase-link"><a href="/cdfa/resource/{short_name}?lang={lang}" title="{str(target_uri)}">{display_text}</a></span>'
             html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
+
+        # -----------
+        # NEW CASE: sections that use this concept as dct:subject
+        # -----------
+        elif len(prop) == 5 and prop[0] == '🏷️ used as subject in section':
+            pred_label, s, p, target_uri, display_text = prop
+            short_name = str(target_uri).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
+            obj_html = f'<a href="/cdfa/resource/{short_name}?lang={lang}" class="resource-link" title="{str(target_uri)}">{display_text}</a>'
+            html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
+        # -----------
 
         else:  # Normal triples
             pred_label, s, p, o = prop
@@ -743,25 +784,34 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
             html += f'<tr><td style="font-weight:600">{pred_label}</td><td>{obj_html}</td></tr>'
 
     html += '</table>'
+    
+    is_skos_concept = (
+        list(thesaurus_g.triples((uri, RDF.type, SKOS.Concept))) or
+        list(thesaurus_g.triples((uri, SKOS.prefLabel, None)))
+    )
+    if not is_skos_concept:
+        html += f"<h2>🔗 {t('related_resources')} ({len(inverse_triples)})</h2><table><tr><th>{t('resource')}</th><th>Relation</th></tr>"
+        for s, p, o in inverse_triples:
+            s_frag = str(s).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
+            if s_frag in ENDPOINT_TERMINALS:
+                s_label, _ = get_display_label(s, s_frag)
+                html += f"<tr><td><span class='terminal-link'>{s_label}</span></td><td><strong>{str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]}</strong></td></tr>"
+            else:
+                s_label, _ = get_display_label(s, s_frag)
+                pred = str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]
+                html += f"<tr><td><a href='/cdfa/resource/{s_frag}?lang={lang}' class='resource-link'>{s_label}</a></td><td><strong>{pred}</strong></td></tr>"
+        html += "</table>"
 
-    html += f"<h2>🔗 {t('related_resources')} ({len(inverse_triples)})</h2><table><tr><th>{t('resource')}</th><th>Relation</th></tr>"
-    for s, p, o in inverse_triples:
-        s_frag = str(s).rsplit('/', 1)[-1].rsplit('#', 1)[-1]
-        if s_frag in ENDPOINT_TERMINALS:
-            s_label, _ = get_display_label(s, s_frag)
-            html += f"<tr><td><span class='terminal-link'>{s_label}</span></td><td><strong>{str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]}</strong></td></tr>"
-        else:
-            s_label, _ = get_display_label(s, s_frag)
-            pred = str(p).split('#')[-1] if '#' in str(p) else str(p).rsplit('/', 1)[-1]
-            html += f"<tr><td><a href='/cdfa/resource/{s_frag}?lang={lang}' class='resource-link'>{s_label}</a></td><td><strong>{pred}</strong></td></tr>"
-    html += "</table></body></html>"
+    html += "</body></html>"
 
     return html
+
+
+
 
 if __name__ == "__main__":
     print("✅ CDFA FUEROS: ENGLISH/SPANISH TRANSLATION ✅ SYNTAX FIXED!")
     print("✅ ?lang=en or ?lang=es - Language switcher top-right")
     print("✅ No more syntax errors - COMPLETE working code")
-    print("https://127.0.0.1:5000/")
+    print("https://127.0.0.1:5013/")
     app.run(host="0.0.0.0", port=5013, debug=False)
-
