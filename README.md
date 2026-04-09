@@ -2,7 +2,7 @@
 
 # Description
 
-GitHub repository with the code for the generation of a linked data repository from the contents of a [parallel Latin-Spanish corpus with contents of the charters of the Aragon Kingdom](https://zenodo.org/records/18272211).
+This repository contains the code and data required for the generation of a linked data repository from the contents of a [parallel Latin-Spanish corpus with contents of the charters of the Aragon Kingdom](https://zenodo.org/records/18272211).
 
 Contents of this folder:
 - RDFcreation: a folder that contains the Python scripts responsible for generating and populating RDF data.
