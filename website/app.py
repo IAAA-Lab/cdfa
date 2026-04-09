@@ -13,7 +13,7 @@ THESAURUS_FILE = "data/tesauro-de-derecho-foral-aragones.rdf"
 
 MAX_LITERAL_CHARS = 150
 
-# ✅ TRANSLATION DICTIONARY
+# TRANSLATION DICTIONARY
 TRANSLATIONS = {
     'es': {
         'title': '📚 CDFA: Fueros de Reino de Aragón',
@@ -69,16 +69,16 @@ if os.path.exists(THESAURUS_FILE):
     thesaurus_g.parse(THESAURUS_FILE)
     print(f"Loaded {len(thesaurus_g)} thesaurus triples")
 
-# ✅ EXTRACT ConceptScheme URL from thesaurus file
+#  EXTRACT ConceptScheme URL from thesaurus file
 CONCEPT_SCHEME_URL = None
 for s, p, o in thesaurus_g.triples((None, RDF.type, SKOS.ConceptScheme)):
     CONCEPT_SCHEME_URL = str(s)
-    print(f"✅ Found ConceptScheme: {CONCEPT_SCHEME_URL}")
+    print(f" Found ConceptScheme: {CONCEPT_SCHEME_URL}")
     break
 
 if not CONCEPT_SCHEME_URL:
     CONCEPT_SCHEME_URL = "https://ibersid.eu/tesauros/tesauro_00/vocab/"
-    print(f"⚠️  No ConceptScheme found, using fallback: {CONCEPT_SCHEME_URL}")
+    print(f"  No ConceptScheme found, using fallback: {CONCEPT_SCHEME_URL}")
 
 # Bind namespaces
 cdfa = Namespace(SCHEMA_NS)
@@ -117,11 +117,11 @@ def get_concept_label(concept_uri: str) -> str:
             return str(label)
     for _, _, label in thesaurus_g.triples((uri, SKOS.prefLabel, None)):
         return str(label)
-    # ✅ AltLabel fallback
+    #  AltLabel fallback
     for _, _, label in thesaurus_g.triples((uri, SKOS.altLabel, None)):
         if isinstance(label, Literal) and label.language == "es":
             return str(label)
-    # ✅ Fragment as final fallback
+    #  Fragment as final fallback
     return str(uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
 
 def get_concept_link(concept_uri: str, as_internal=False) -> tuple:
@@ -318,7 +318,7 @@ def get_frag(uri):
     return frag.replace("skos/", "").strip('/')
 
 def get_property_name(p):
-    """✅ EXACT RDF NAMES: dc:title, skos:hasTopConcept, rdf:type, etc."""
+    """ EXACT RDF NAMES: dc:title, skos:hasTopConcept, rdf:type, etc."""
     if p == RDF.type: return "rdf:type"
     if p == SKOS.prefLabel: return "skos:prefLabel"
     if p == SKOS.narrower: return "skos:narrower"
@@ -339,14 +339,14 @@ def get_property_name(p):
 
 def try_both_uris(frag):
     uris_to_try = [
-        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/skos/{frag}"),      # ✅ Uses CONCEPT_SCHEME_URL
+        URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/skos/{frag}"),      # Uses CONCEPT_SCHEME_URL
         URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/{frag}"),           
         URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/vocab/{frag}"),     
-        URIRef(f"{SCHEMA_NS}{frag}")                                 # ✅ CDFA fallback
+        URIRef(f"{SCHEMA_NS}{frag}")                                 #  CDFA fallback
     ]
     for uri in uris_to_try:
         if list(thesaurus_g.triples((uri, None, None))) or list(g.triples((uri, None, None))):
-            print(f"✅ FOUND {frag} at: {uri}")
+            print(f"FOUND {frag} at: {uri}")
             return uri
     print(f"❌ NOT FOUND {frag}")
     return None
@@ -409,14 +409,15 @@ def index():
         label = hierarchy_labels[i]
         html += f'<div class="hierarchy-item"><a href="/cdfa/type/{type_name.lower()}?lang={lang}"><div style="font-size: 3.5em;">{icon}</div><div>{label}</div><div style="font-size: 2em;">{count}</div></a></div>'
 
-    # ✅ Add ConceptScheme button
+    # Add ConceptScheme button
+    label = HIERARCHY_LABELS[lang][9]
     if CONCEPT_SCHEME_URL:
         scheme_count = len(list(thesaurus_g.triples((None, RDF.type, SKOS.ConceptScheme))))
         html += f'''
         <div class="hierarchy-item">
             <a href="/cdfa/conceptscheme?lang={lang}">
                 <div style="font-size: 3.5em;">🏛️</div>
-                <div>{"ConceptScheme" if lang == "es" else "ConceptScheme"}</div>
+                <div>{label}</div>
                 <div style="font-size: 2em;">{scheme_count}</div>
             </a>
         </div>
@@ -486,7 +487,7 @@ def resource(frag):
     lang = get_lang()
     frag = frag.strip('/')
     
-    # ✅ TRY CDFA FIRST, then Thesaurus URIs
+    #  TRY CDFA FIRST, then Thesaurus URIs
     uri_candidates = [
         URIRef(f"{SCHEMA_NS}{frag}"),                          # 1. CDFA: https://iaaa.es/cdfa/510
         URIRef(f"{CONCEPT_SCHEME_URL.rstrip('/')}/skos/{frag}"),   # 2. Thesaurus: .../skos/510
@@ -496,13 +497,13 @@ def resource(frag):
     
     uri = None
     for candidate in uri_candidates:
-        # ✅ Check if EITHER graph has triples about this URI
+        # Check if EITHER graph has triples about this URI
         if (list(g.triples((candidate, None, None))) or 
             list(thesaurus_g.triples((candidate, None, None))) or
             list(g.query(f"CONSTRUCT WHERE {{ ?s ?p <{candidate}> . }}")) or
             list(thesaurus_g.query(f"CONSTRUCT WHERE {{ ?s ?p <{candidate}> . }}"))):
             uri = candidate
-            print(f"✅ FOUND {frag} → {uri}")
+            print(f"FOUND {frag} → {uri}")
             break
     
     if not uri:
@@ -517,11 +518,11 @@ p{{color:#7f8c8d;font-size:1.3em;line-height:1.6}}</style>
 <a href="/cdfa/?lang={lang}" style="background:#3498db;color:white;padding:15px 30px;border-radius:12px;font-size:1.2em;text-decoration:none;display:inline-block;margin-top:30px">{t('home')}</a>
 </div></body></html>""", 404
     
-    # ✅ ALL FORWARD TRIPLES FROM BOTH GRAPHS
+    # ALL FORWARD TRIPLES FROM BOTH GRAPHS
     triples = (list(g.triples((uri, None, None))) + 
                list(thesaurus_g.triples((uri, None, None))))
     
-    # ✅ ALL INVERSE TRIPLES FROM BOTH GRAPHS
+    # ALL INVERSE TRIPLES FROM BOTH GRAPHS
     inverse_query = f"CONSTRUCT WHERE {{ ?s ?p <{uri}> . }}"
     inverse_triples = (list(g.query(inverse_query)) + 
                        list(thesaurus_g.query(inverse_query)))
@@ -574,7 +575,7 @@ td{{color:black;padding:18px 15px;border-bottom:1px solid #eee;vertical-align:to
 
         prop_name = get_property_name(p)
 
-        # ✅ Special case: rdf:type → no link, just plain text
+        # Special case: rdf:type → no link, just plain text
         if p == RDF.type and isinstance(o, URIRef):
             # show eg. "skos:ConceptScheme" or "ConceptScheme" as plain text
             obj_label = get_concept_label(str(o))
@@ -768,7 +769,7 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
                     label, _ = get_display_label(o, short_name)
                     obj_html = f'<span class="terminal-link" title="{str(o)}">🔸 {label}</span>'
                 elif list(thesaurus_g.triples((o, SKOS.prefLabel, None))):
-                    # ✅ Internal link for SKOS concept
+                    #  Internal link for SKOS concept
                     label, external_url = get_concept_link(str(o), as_internal=True)
                     obj_html = f'<a href="{external_url}" class="concept-link" title="{str(o)}">{label}</a>'
                 else:
@@ -810,8 +811,4 @@ a.terminal-link{{color:#95a5a6 !important;font-style:italic;border-left-color:#b
 
 
 if __name__ == "__main__":
-    print("✅ CDFA FUEROS: ENGLISH/SPANISH TRANSLATION ✅ SYNTAX FIXED!")
-    print("✅ ?lang=en or ?lang=es - Language switcher top-right")
-    print("✅ No more syntax errors - COMPLETE working code")
-    print("https://127.0.0.1:5013/")
     app.run(host="0.0.0.0", port=5013, debug=False)
