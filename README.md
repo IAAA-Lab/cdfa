@@ -14,7 +14,7 @@ Contents of this folder:
 
 # Acknowledgements
 
-This repository is part of the [Miguel del Molino project](https://migueldelmolino.es/) supported by the Aragon Regional Government (Spain) [grant number PROY_S11_24]
+This repository is part of the [Miguel del Molino project](https://migueldelmolino.es/) supported by the Aragon Regional Government (Spain) [grant number PROY_S11_24].
 
 ## Credits
 
