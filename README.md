@@ -10,7 +10,7 @@ Contents of this folder:
 - fuseki : a folder with the configuration of a Fuseki SPARQL end-point container. This Fuseki deployment incorporates textual indexes on the values of dct:title and dct:description properties.
 - fuseki_storage_creation.py: In case fueros RDF file isn't uploaded manualy in Fuseki SPARQL end-point, this program creates a new dataset in Fuseki (with the textual indexes) and uploads the RDF data.
 - search_concepts.py: Program to generate subject annotations. For each concept (without narrower concepts) in the thesaurus, it look up the preferred label of the concept in the Fueros RDF file. There are two strategies implemented: look for direct matches with CONTAINS function in the section titles, or textual queries of in section titles through the Fuseki end-point container.
-- website: a folder that contains all the necessary files to build, run, and deploy the Linked Data portal using a Flask-based service, including configuration, dependencies, and containerization setup. A demo of this folder is available at [Website](https://migueldelmolino.es/cdfa/)
+- website: a folder that contains all the necessary files to build, run, and deploy the Linked Data portal using a Flask-based service, including configuration, dependencies, and containerization setup. A demo of this web site is available [onlin](https://migueldelmolino.es/cdfa/).
 
 # Acknowledgements
 
