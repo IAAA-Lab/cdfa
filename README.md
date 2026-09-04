@@ -11,6 +11,7 @@ Contents of this folder:
 - fuseki_storage_creation.py: In case fueros RDF file isn't uploaded manualy in Fuseki SPARQL end-point, this program creates a new dataset in Fuseki (with the textual indexes) and uploads the RDF data.
 - search_concepts.py: Program to generate subject annotations. For each concept (without narrower concepts) in the thesaurus, it look up the preferred label of the concept in the Fueros RDF file. There are two strategies implemented: look for direct matches with CONTAINS function in the section titles, or textual queries of in section titles through the Fuseki end-point container.
 - website: a folder that contains all the necessary files to build, run, and deploy the Linked Data portal using a Flask-based service, including configuration, dependencies, and containerization setup. A demo of this web site is available [online](https://migueldelmolino.es/cdfa/).
+- thematic_annotation : a folder that contains the Python scripts implementing the different approaches, along with the evaluation script, input data, and the results obtained with the Gemma4 and Qwen3 models.
 
 # Acknowledgements
 
